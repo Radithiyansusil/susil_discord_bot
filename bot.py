@@ -14,6 +14,8 @@ import logging
 import math
 import os
 import re
+import time
+from collections import OrderedDict
 from typing import cast
 
 import discord
@@ -43,7 +45,7 @@ COLOR = discord.Color.blurple()
 URL_RE = re.compile(r"https?://", re.IGNORECASE)
 QUEUE_PAGE_SIZE = 10
 
-log = logging.getLogger("musicbot")
+log = logging.getLogger("soorgam")
 
 
 # ------------------------------------------------------------------ player --
@@ -191,6 +193,94 @@ async def leave_if_idle(player: MusicPlayer) -> None:
     """Leave right away when a failed search left the bot connected with nothing to do."""
     if not player.playing and player.queue.is_empty:
         await player.disconnect()
+
+
+# ----------------------------------------------------------- autocomplete --
+
+AUTOCOMPLETE_TTL = 600           # keep each cached result for 10 minutes
+AUTOCOMPLETE_CACHE_MAX = 200     # remember at most this many queries at once
+AUTOCOMPLETE_RESULTS = 8         # suggestions to show per query
+
+# Cache: lowercased input -> (cached_at_monotonic, choices). OrderedDict so we can drop oldest.
+_autocomplete_cache: "OrderedDict[str, tuple[float, list[app_commands.Choice[str]]]]" = OrderedDict()
+
+# (From "Movie Name") or (From "Movie Name (Tamil)")  ->  keep just the movie name.
+_FROM_RE = re.compile(r'\(\s*from\s+"([^"]+)"\s*\)', re.IGNORECASE)
+_INNER_TAG_RE = re.compile(r"\s*\([^)]*\)\s*$")  # a trailing language tag like (Tamil)
+# Junk tags wrapped in () or [], longest phrases first so they win the alternation.
+_JUNK_RE = re.compile(
+    r"[\(\[]\s*(?:"
+    r"official music video|official video|official audio|full video song|"
+    r"lyric video|video song|lyrical|audio|hd|4k"
+    r")\s*[\)\]]",
+    re.IGNORECASE,
+)
+_EMPTY_BRACKETS_RE = re.compile(r"[\(\[]\s*[\)\]]")
+_TOPIC_RE = re.compile(r"\s*-\s*topic\s*$", re.IGNORECASE)
+
+
+def clean_title(title: str) -> str:
+    def from_repl(match: "re.Match[str]") -> str:
+        inner = _INNER_TAG_RE.sub("", match.group(1)).strip()
+        return f"({inner})" if inner else ""
+
+    title = _FROM_RE.sub(from_repl, title)
+    title = _JUNK_RE.sub("", title)
+    title = _EMPTY_BRACKETS_RE.sub("", title)
+    return re.sub(r"\s+", " ", title).strip()
+
+
+def clean_artist(author: str) -> str:
+    return _TOPIC_RE.sub("", author or "").strip()
+
+
+def track_to_choice(track: wavelink.Playable) -> "app_commands.Choice[str] | None":
+    """Build a '[m:ss] Title — Artist' choice, or None if the track has no usable uri."""
+    uri = track.uri
+    if not uri or len(uri) > 100:
+        return None
+    duration = "LIVE" if track.is_stream else format_time(track.length)
+    title = shorten(clean_title(track.title) or track.title, 40)
+    artist = shorten(clean_artist(track.author), 25)
+    name = f"[{duration}] {title} — {artist}" if artist else f"[{duration}] {title}"
+    return app_commands.Choice(name=shorten(name, 100), value=uri)
+
+
+async def query_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> "list[app_commands.Choice[str]]":
+    """Suggest songs as the user types. Never raises; returns [] on timeout or error."""
+    text = current.strip()
+    if len(text) < 3 or URL_RE.match(text):
+        return []
+
+    key = text.lower()
+    now = time.monotonic()
+    cached = _autocomplete_cache.get(key)
+    if cached is not None and now - cached[0] < AUTOCOMPLETE_TTL:
+        _autocomplete_cache.move_to_end(key)
+        return cached[1]
+
+    try:
+        results = await asyncio.wait_for(
+            wavelink.Playable.search(text, source=wavelink.TrackSource.YouTubeMusic),
+            timeout=2.5,
+        )
+    except Exception:  # timeout or anything else: show nothing rather than erroring
+        return []
+
+    tracks = results.tracks if isinstance(results, wavelink.Playlist) else results
+    choices: "list[app_commands.Choice[str]]" = []
+    for track in tracks[:AUTOCOMPLETE_RESULTS]:
+        choice = track_to_choice(track)
+        if choice is not None:
+            choices.append(choice)
+
+    _autocomplete_cache[key] = (now, choices)
+    _autocomplete_cache.move_to_end(key)
+    while len(_autocomplete_cache) > AUTOCOMPLETE_CACHE_MAX:
+        _autocomplete_cache.popitem(last=False)
+    return choices
 
 
 # --------------------------------------------------------------------- bot --
@@ -365,6 +455,20 @@ async def queue_tracks(interaction: discord.Interaction, query: str, *, play_nex
             await interaction.followup.send(f"▶️ Playing **{title}**")
 
     await start_if_idle(player)
+
+
+@play.autocomplete("query")
+async def play_query_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> "list[app_commands.Choice[str]]":
+    return await query_autocomplete(interaction, current)
+
+
+@playnext.autocomplete("query")
+async def playnext_query_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> "list[app_commands.Choice[str]]":
+    return await query_autocomplete(interaction, current)
 
 
 @bot.tree.command(name="skip", description="Skip the current song")

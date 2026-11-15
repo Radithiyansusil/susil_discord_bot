@@ -1,4 +1,4 @@
-# Your own Discord music bot
+# Soorgam — your own Discord music bot
 
 Plays songs in a voice channel from:
 
@@ -15,9 +15,10 @@ You type /play  ->  bot (Python)  ->  Lavalink (audio engine)  ->  YouTube
                                          |
                                          +-> LavaSrc plugin reads Spotify links,
                                              then plays the same song from YouTube
+                                             (spotify-tokener gives it a Spotify token)
 ```
 
-Both programs run in Docker on a free Oracle Cloud server, restart automatically, and stay online 24/7.
+All three programs run in Docker on a free Oracle Cloud server, restart automatically, and stay online 24/7. You don't need a Spotify account, Spotify Premium or a Spotify developer app.
 
 ## What you need
 
@@ -30,7 +31,7 @@ Both programs run in Docker on a free Oracle Cloud server, restart automatically
 
 ## Step 1: Create the Discord bot
 
-1. Go to https://discord.com/developers/applications and click **New Application**. Give it a name.
+1. Go to https://discord.com/developers/applications and click **New Application**. Give it the name **Soorgam**.
 2. Open the **Installation** tab and set **Install Link** to **None**. (Discord won't let you make the bot private until you do this.)
 3. Open the **Bot** tab:
    - Turn **Public Bot** OFF, so only you can add it to servers.
@@ -135,6 +136,8 @@ docker compose logs -f lavalink
 
 Now try `/play` in Discord. 🎉
 
+Spotify links work automatically — the `spotify-tokener` container handles Spotify access for you, so there's nothing to set up.
+
 ---
 
 ## Commands
@@ -191,7 +194,9 @@ The plugin's GitHub "Issues" page is the best place to see whether others have t
 
 **"No supported audio streams available" or "All clients failed".** YouTube changed something. Update the YouTube plugin.
 
-**A Spotify link doesn't load.** Spotify may have changed something on its side. Check for a newer LavaSrc release at https://github.com/topi314/LavaSrc/releases and update the version in `application.yml`.
+**A Spotify link doesn't load.** First check that the token helper is running: `docker compose logs --tail 30 spotify-tokener`. Then look for lines mentioning "spotify" or "token" in `docker compose logs --tail 100 lavalink`. If Spotify changed something on its side, check for a newer LavaSrc release at https://github.com/topi314/LavaSrc/releases and update the version in `lavalink/application.yml`.
+
+**A big Spotify playlist takes a while to load.** LavaSrc looks up each song one by one, so a 300-song playlist may take a minute or more. The bot shows "thinking…" until it's done. Spotify playlists are capped at 300 songs; change `playlistLoadLimit` in `lavalink/application.yml` to raise or lower that.
 
 **A Spotify song plays the wrong version (live, cover, remix).** The bot matches Spotify songs to YouTube by name, and sometimes picks a different upload. Use `/play` with the YouTube link of the version you want.
 

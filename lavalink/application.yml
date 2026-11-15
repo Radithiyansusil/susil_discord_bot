@@ -51,8 +51,8 @@ lavalink:
       lowPass: true
     bufferDurationMs: 400
     frameBufferDurationMs: 5000
-    opusEncodingQuality: 10
-    resamplingQuality: LOW
+    opusEncodingQuality: 10     # Opus encoder quality, 0-10. 10 = best (already maxed).
+    resamplingQuality: HIGH     # Sample-rate conversion quality: LOW/MEDIUM/HIGH. HIGH = best audio, a little more CPU.
     trackStuckThresholdMs: 10000
     useSeekGhosting: true
     youtubePlaylistLoadLimit: 6   # YouTube playlists: up to 6 pages x 100 = 600 songs
@@ -120,14 +120,19 @@ plugins:
       qobuz: false
       ytdlp: false
     spotify:
-      # No Spotify developer account needed: LavaSrc reads public tracks, albums and playlists
-      # the same way the Spotify web player does. (Spotify's official API would need Premium and
-      # can't read other people's playlists anymore.) This is unofficial and may break.
-      # clientId: ""
-      # clientSecret: ""
-      preferAnonymousToken: true
+      # No Spotify account, Premium or developer app needed.
+      # LavaSrc reads tracks, albums and public playlists through the same internal API that
+      # Spotify's web player uses ("Partner API"). The access token for it comes from the
+      # spotify-tokener container in docker-compose.yml, which opens Spotify's website in a
+      # hidden browser. This is unofficial, so a Spotify change could break it again.
+      # (Spotify's official developer API is no use here: it needs Premium and, since 2026,
+      # refuses to list the songs of playlists your developer account doesn't own.)
+      preferPartnerApi: true
+      customTokenEndpoint: "http://spotify-tokener:8080/api/token"
       countryCode: "IN"
-      playlistLoadLimit: 6        # Spotify playlists: up to 6 pages x 100 = 600 songs
+      # Spotify playlists load up to 3 x 100 = 300 songs. Bigger values work, but big playlists
+      # take longer to load because LavaSrc looks up each song's recording code one at a time.
+      playlistLoadLimit: 3
       albumLoadLimit: 6
       resolveArtistsInSearch: false
       localFiles: false

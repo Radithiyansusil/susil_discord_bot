@@ -1,9 +1,17 @@
-# Starts two programs that keep running 24/7 and restart automatically:
-#   lavalink  - the audio engine (finds and streams songs)
-#   bot       - your Discord bot (slash commands and the queue)
+# Starts three programs that keep running 24/7 and restart automatically:
+#   spotify-tokener - gets the access token Lavalink needs to read Spotify links
+#   lavalink        - the audio engine (finds and streams songs)
+#   bot             - your Discord bot (slash commands and the queue)
 # Start/update everything with:  docker compose up -d --build
 
 services:
+  spotify-tokener:
+    image: ghcr.io/topi314/spotify-tokener:master
+    container_name: spotify-tokener
+    restart: unless-stopped
+    expose:
+      - "8080"   # reachable only by Lavalink, not from the internet
+
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4.2.2
     container_name: lavalink
@@ -15,10 +23,12 @@ services:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
     expose:
       - "2333"   # reachable only by the bot container, not from the internet
+    depends_on:
+      - spotify-tokener
 
   bot:
     build: .
-    container_name: music-bot
+    container_name: soorgam
     restart: unless-stopped
     env_file: .env
     environment:
