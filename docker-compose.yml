@@ -1,0 +1,27 @@
+# Starts two programs that keep running 24/7 and restart automatically:
+#   lavalink  - the audio engine (finds and streams songs)
+#   bot       - your Discord bot (slash commands and the queue)
+# Start/update everything with:  docker compose up -d --build
+
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2
+    container_name: lavalink
+    restart: unless-stopped
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xmx1G
+      - LAVALINK_SERVER_PASSWORD=${LAVALINK_PASSWORD:?Set LAVALINK_PASSWORD in your .env file}
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+    expose:
+      - "2333"   # reachable only by the bot container, not from the internet
+
+  bot:
+    build: .
+    container_name: music-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - LAVALINK_URI=http://lavalink:2333
+    depends_on:
+      - lavalink

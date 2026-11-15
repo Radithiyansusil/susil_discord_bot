@@ -1,0 +1,16 @@
+# Secrets — never commit these
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local virtual environments
+venv/
+.venv/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

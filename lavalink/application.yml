@@ -1,0 +1,154 @@
+# Lavalink = the audio engine. It finds songs, streams them and sends the audio to Discord.
+# The bot talks to it over the private Docker network; it is never exposed to the internet.
+
+server:
+  port: 2333
+  address: 0.0.0.0
+  http2:
+    enabled: false
+
+lavalink:
+  plugins:
+    # YouTube support. YouTube changes often, so this is the part you'll update most.
+    # This is a "snapshot" build (identified by its commit hash) that includes fixes made after
+    # the last official release. When a newer official release appears at
+    # https://github.com/lavalink-devs/youtube-source/releases (1.18.3 or later), switch to it:
+    #   dependency: "dev.lavalink.youtube:youtube-plugin:1.18.3"
+    #   snapshot: false
+    # If Lavalink says it can't download this snapshot, use this earlier one instead:
+    #   f45bbb7aebfcbc1c553769e04af6cd43afa8b7c3
+    - dependency: "dev.lavalink.youtube:youtube-plugin:2be8e542d3f6f178e048dca565892684c2e40177"
+      snapshot: true
+
+    # Spotify (and Apple Music / Deezer) link support. Reads the song list from the link and
+    # plays each song from YouTube. Releases: https://github.com/topi314/LavaSrc/releases
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      snapshot: false
+
+  server:
+    # Placeholder only. The real password comes from LAVALINK_PASSWORD in your .env file
+    # (docker-compose.yml passes it in as LAVALINK_SERVER_PASSWORD, which overrides this line).
+    password: "change-me-in-dot-env"
+    sources:
+      youtube: false        # must stay false: the youtube-plugin above replaces the old built-in source
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      nico: false
+      http: false           # off so nobody can make your server fetch random web addresses
+      local: false
+    filters:
+      volume: true
+      equalizer: true
+      karaoke: true
+      timescale: true
+      tremolo: true
+      vibrato: true
+      distortion: true
+      rotation: true
+      channelMix: true
+      lowPass: true
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    resamplingQuality: LOW
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    youtubePlaylistLoadLimit: 6   # YouTube playlists: up to 6 pages x 100 = 600 songs
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+    gc-warnings: true
+    timeouts:
+      connectTimeoutMs: 5000
+      connectionRequestTimeoutMs: 5000
+      socketTimeoutMs: 10000
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    # Ways of talking to YouTube, tried in this order until one works.
+    clients:
+      - MUSIC          # YouTube Music search (used for plain song names)
+      - TV             # playback through your signed-in YouTube account (see oauth below)
+      - WEB
+      - MWEB
+      - WEBEMBEDDED
+      - ANDROID_VR
+    clientOptions:
+      TV:
+        playlistLoading: false
+        videoLoading: false
+        searching: false
+
+    # YouTube scrambles its video links; this free public service unscrambles them.
+    # It's run by a community member with no uptime guarantee. If it goes down, you can
+    # run your own copy: https://github.com/kikkia/yt-cipher
+    remoteCipher:
+      url: "https://cipher.kikkia.dev"
+
+    # Signing in with a SPARE Google account makes YouTube treat your cloud server like a
+    # normal viewer instead of blocking it as a bot. Never use your main Google account:
+    # YouTube can ban accounts used this way. Setup steps are in README.md ("YouTube sign-in").
+    oauth:
+      enabled: true
+      # After the first sign-in, paste the refresh token from the Lavalink logs here,
+      # remove the # from both lines below, and restart Lavalink.
+      # refreshToken: "PASTE_YOUR_REFRESH_TOKEN_HERE"
+      # skipInitialization: true
+
+  lavasrc:
+    # How Spotify songs are found on YouTube: first by their official recording code (ISRC),
+    # then by "title artist" on YouTube Music, then on regular YouTube.
+    providers:
+      - 'ytsearch:"%ISRC%"'
+      - "ytmsearch:%QUERY%"
+      - "ytsearch:%QUERY%"
+    sources:
+      spotify: true
+      applemusic: false
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+      youtube: false
+      vkmusic: false
+      tidal: false
+      qobuz: false
+      ytdlp: false
+    spotify:
+      # No Spotify developer account needed: LavaSrc reads public tracks, albums and playlists
+      # the same way the Spotify web player does. (Spotify's official API would need Premium and
+      # can't read other people's playlists anymore.) This is unofficial and may break.
+      # clientId: ""
+      # clientSecret: ""
+      preferAnonymousToken: true
+      countryCode: "IN"
+      playlistLoadLimit: 6        # Spotify playlists: up to 6 pages x 100 = 600 songs
+      albumLoadLimit: 6
+      resolveArtistsInSearch: false
+      localFiles: false
+
+metrics:
+  prometheus:
+    enabled: false
+    endpoint: /metrics
+
+sentry:
+  dsn: ""
+  environment: ""
+
+logging:
+  level:
+    root: INFO
+    lavalink: INFO
+    dev.lavalink.youtube.http.YoutubeOauth2Handler: INFO   # shows the YouTube sign-in code
+  request:
+    enabled: false
+  logback:
+    rollingpolicy:
+      max-file-size: 100MB
+      max-history: 7
